@@ -1,4 +1,3 @@
-#%%
 import numpy as np
 import rasterio
 from rasterio.merge import merge
@@ -433,7 +432,7 @@ def main():
         dst.write(dNBR_burnt_area_reclass[0], 1)
 
     del dNBR_burnt_area, dNBR_burnt_area_reclass
-    
+
     # Calculate the dNBR to identify areas where presence or absence of regrowth
     dNBR_veg_regrowth = calculate_S2_dNBR(process_indices_storage['end_fire'], process_indices_storage['recent_day'], no_data)
 
@@ -449,12 +448,8 @@ def main():
 
     del dNBR_veg_regrowth_reclass, dNBR_veg_regrowth_reclass_masked 
 
-#%%
+
+
 if __name__ == '__main__':
 
     main()
-
-
-
-
-# %%
