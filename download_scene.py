@@ -236,20 +236,62 @@ def calculate_S2_dNBR(array1, array2, nodata):
 
     mask_nodata = create_mask(array1, nodata) & create_mask(array2, nodata)
 
-    return (array1 - array2) * mask_nodata
+    return apply_mask(array1 - array2, mask_nodata, nodata)
 
-def reclassify_NBR():
+def reclassify_S2_NBR(NBR_array, classification_method, nodata):
+    '''
+    Reclassify array values to categorical values. Different classification methods are available depending the 
+    desired outcome (burnt areas or vegetation regrowth)
+    
+    NBR_arrray: array containing the value of a NBR indice.
 
-    pass
+    classification_method: Select between 'burnt_area' or 'veg_regrowth'
+
+    '''
+
+    NBR_array_copy = NBR_array.copy()
+
+    if classification_method == 'burnt_area':
+        NBR_array_copy[np.where(NBR_array == nodata)] = 255 # No data
+        NBR_array_copy[np.where(NBR_array < 0.1)] = 255 # No data
+        NBR_array_copy[np.where((0.1 <= NBR_array) & (NBR_array < 0.27))] = 1 # Low-severity burn
+        NBR_array_copy[np.where((0.27 <= NBR_array) & (NBR_array < 0.44))] = 2 # Moderate-low severity burn
+        NBR_array_copy[np.where((0.44 <= NBR_array) & (NBR_array < 0.66))] = 3 # Moderate-high severity burn
+        NBR_array_copy[np.where(NBR_array >= 0.66)] = 4 # High-severity burn
 
 
-#%%
+    elif classification_method == 'veg_regrowth':
+        NBR_array_copy[np.where(NBR_array == nodata)] = 255
+        NBR_array_copy[np.where(NBR_array < -0.25)] = 1 # High post-fire regrowth
+        NBR_array_copy[np.where((-0.25 <= NBR_array) & (NBR_array < -0.1))] = 2 # Low post-fire regrowth
+        NBR_array_copy[np.where((-0.1 <= NBR_array) & (NBR_array < 0.1))] = 255  # Unburned
+
+        # No regrowth
+        NBR_array_copy[np.where((0.1 <= NBR_array) & (NBR_array < 0.27))] = 3 # Low-severity burn
+        NBR_array_copy[np.where((0.27 <= NBR_array) & (NBR_array < 0.44))] = 3 # Moderate-low severity burn
+        NBR_array_copy[np.where((0.44 <= NBR_array) & (NBR_array < 0.66))] = 3 # Moderate-high severity burn
+        NBR_array_copy[np.where(NBR_array >= 0.66)] = 3 # High-severity burn
+
+    else:
+        raise ValueError("Parameter not recognized. Please select between 'burnt_area' or 'veg_regrowth'")
+
+    # NBR_array_copy[np.where(NBR_array == nodata)] = 255
+    # NBR_array_copy[np.where(NBR_array < -0.25)] = 1 # High post-fire regrowth
+    # NBR_array_copy[np.where((-0.25 <= NBR_array) & (NBR_array < -0.1))] = 2 # Low post-fire regrowth
+    # NBR_array_copy[np.where((-0.1 <= NBR_array) & (NBR_array < 0.1))] = 3  # Unburned
+    # NBR_array_copy[np.where((0.1 <= NBR_array) & (NBR_array < 0.27))] = 4 # Low-severity burn
+    # NBR_array_copy[np.where((0.27 <= NBR_array) & (NBR_array < 0.44))] = 5 # Moderate-low severity burn
+    # NBR_array_copy[np.where((0.44 <= NBR_array) & (NBR_array < 0.66))] = 6 # Moderate-high severity burn
+    # NBR_array_copy[np.where(NBR_array >= -0.66)] = 7 # High-severity burn
+
+    return NBR_array_copy.astype(np.uint8)
 
 def main():
         
-    scene_repositary = param.scene_rep[0]
+    scene_repositary = param.scene_rep
 
-    geom_file = param.geom_file[0]
+    export_results_path = param.export_results
+    geom_file = param.geom_file
     sensor = param.sensor
     spectral_index = param.spectral_index
     no_data = param.no_data
@@ -363,29 +405,56 @@ def main():
         
         
         
-        with rasterio.open(os.path.join(repositary, f"{key}_{process_name}.tif"), mode='w', **output_meta,) as dst:
+        with rasterio.open(os.path.join(export_results_path, f"{key}_{process_name}.tif"), mode='w', **output_meta,) as dst:
 
             dst.write(index_NBR_mask[0], 1)
 
-        del open_raster_list, mask, index_NBR, index_NBR_mask
+        del open_raster_list, mask, index_NBR
  
-   
+    # Preparing to export the NBR raster if it is wished to see the results.
+    output_meta.update({"driver": "GTIFF",
+                    "height": index_NBR_mask.shape[1],
+                    "width": index_NBR_mask.shape[2],
+                    "count": 1,
+                    "transform": out_transform,
+                    "dtype": np.uint8,
+                    "nodata": 255            
+                    })
+
     dNBR_burnt_area = calculate_S2_dNBR(process_indices_storage['before_fire'], process_indices_storage['end_fire'], no_data)
+    
+    # Reassign value range to a specific class
+    dNBR_burnt_area_reclass = reclassify_S2_NBR(dNBR_burnt_area,'burnt_area', no_data)
 
-    dNBR_veg_regrowth = calculate_S2_dNBR(process_indices_storage['end_fire'], process_indices_storage['recent'], no_data)
+    dNBR_burnt_area_reclass_mask = create_mask(dNBR_burnt_area_reclass, 255)
 
+    with rasterio.open(os.path.join(export_results_path, "burnt_area.tif"), mode='w', **output_meta,) as dst:
+
+        dst.write(dNBR_burnt_area_reclass[0], 1)
+
+    del dNBR_burnt_area, dNBR_burnt_area_reclass
+    
+    # Calculate the dNBR to identify areas where presence or absence of regrowth
+    dNBR_veg_regrowth = calculate_S2_dNBR(process_indices_storage['end_fire'], process_indices_storage['recent_day'], no_data)
+
+    # Reassign value range to a specific class
+    dNBR_veg_regrowth_reclass = reclassify_S2_NBR(dNBR_veg_regrowth,'veg_regrowth', no_data)
+    dNBR_veg_regrowth_reclass_masked = apply_mask(dNBR_veg_regrowth_reclass, dNBR_burnt_area_reclass_mask, 255)
+
+    del dNBR_veg_regrowth, dNBR_burnt_area_reclass_mask
+
+    with rasterio.open(os.path.join(export_results_path, "regrowth_masked.tif"), mode='w', **output_meta,) as dst:
+
+        dst.write(dNBR_veg_regrowth_reclass_masked[0], 1)
+
+    del dNBR_veg_regrowth_reclass, dNBR_veg_regrowth_reclass_masked 
+
+#%%
 if __name__ == '__main__':
 
     main()
 
 
 
-# # Enables the option to clip the reading window to boundaries from a geometry file.
-#        
-# def open_raster(self, raster_path, geom_file_path: str = None, clip_to_window: bool = False):
-#  if clip_to_window:
-#             read_window_bounds = self.get_processing_bound(geom_file_path)
-
-#             with rasterio.open(pat[h, mode="r", window=rasterio.windows.from_bounds(read_window_bounds)) as src:
 
 # %%
