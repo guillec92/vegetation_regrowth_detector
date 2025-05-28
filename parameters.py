@@ -1,15 +1,19 @@
-scene_rep = {	'before_fire': r"/home/guillaume/Documents/Recherche emploi/_Deutschland/2025/Software Engineer - Wildfire Impact & Recovery - OroraTech/Challenge/s2_scenes/20240910",
+scene_rep = {	'before_fire': <"full_path_to_scene_folder">,
+r
+				'end_fire': <"full_path_to_scene_folder"> ,
 
-				'end_fire': r"/home/guillaume/Documents/Recherche emploi/_Deutschland/2025/Software Engineer - Wildfire Impact & Recovery - OroraTech/Challenge/s2_scenes/20241109" ,
+				'recent_day': <"full_path_to_scene_folder">,
+				
+				}
 
-				'recent': r"/home/guillaume/Documents/Recherche emploi/_Deutschland/2025/Software Engineer - Wildfire Impact & Recovery - OroraTech/Challenge/s2_scenes/20250523"
-				},
 
+export_results = <"full_path_to_export_folder">
 
-geom_file = r"/home/guillaume/Documents/Recherche emploi/_Deutschland/2025/Software Engineer - Wildfire Impact & Recovery - OroraTech/Challenge/extent_wildfire_Portugal_32629.geojson",
+geom_file = <"full_path_to_scene_geometry">
 
 sensor = 'S2'
 
 spectral_index = 'NBR'
+
 no_data = -9999
 		
