@@ -13,8 +13,8 @@ import parameters as param
 
 class download_scene():
     '''
-    This is an empty class to mention that the images could be dowloaded dynamically. 
-    This sectin could be develop in a later time.
+    This is an empty class to mention that the images could be dowloaded dynamically (date, scene parameters, etc.)
+    This section could be develop in a later time.
 
     '''
     def __init__(self):
@@ -25,9 +25,7 @@ class download_scene():
 class Raster_processing():
     # Dictionnary which contains the necessary bands to perform the requested spectral index. The dictionnary can contain
     # several indices such as NDVI, NDWI, etc.
-    bands_to_select_dict = {'S2_NBR': ('B02_10m','B03_10m','B04_10m','B08_10m','B12_20m','SCL_20m'),
-                            'S2_NDVI': ('B02_10m','B03_10m','B04_10m','B08_10m'),
-                            }
+
 
 
     def __init__(self, raster_path, sensor_name: str, spectral_index_name: str):
@@ -35,6 +33,9 @@ class Raster_processing():
         self.sensor = sensor_name
         self.spectral_index = spectral_index_name
 
+        self.bands_to_select_dict = {   'S2_NBR': ('B02_10m','B03_10m','B04_10m','B08_10m','B12_20m','SCL_20m'),
+                                        'S2_NDVI': ('B02_10m','B03_10m','B04_10m','B08_10m'),
+                                    }
 
     def open_raster(self, raster_path):
         '''
@@ -231,6 +232,12 @@ def calculate_S2_NBR(band_08, band_12):
 
     return NBR
 
+def calculate_S2_dNBR(array1, array2, nodata):
+
+    mask_nodata = create_mask(array1, nodata) & create_mask(array2, nodata)
+
+    return (array1 - array2) * mask_nodata
+
 def reclassify_NBR():
 
     pass
@@ -256,6 +263,7 @@ def main():
 
     process_name = sensor + '_' + spectral_index
 
+    process_indices_storage = {}
 
     for key, repositary in scene_repositary.items():
         
@@ -268,7 +276,7 @@ def main():
 
         # Process each raster scene to get band path, open the rasters, merge tiles, clip, resample, calculate indices.
         for path in scene_name_file.get_raster_paths():
-            print(path, '\n')
+            
             scene_processing = Raster_processing(path, sensor_name=sensor, spectral_index_name=spectral_index)
 
             bands_to_process = scene_processing.select_bands()
@@ -277,19 +285,21 @@ def main():
            
             open_raster = scene_processing.open_raster(raster_path=band_path)
             open_raster_list.append(open_raster)
+
             del scene_processing, bands_to_process, band_path, open_raster
+
             # Here I assume that all rasters have the same coordinate system. An additional step to verify and test if they all have the same.
             # For example, in case of difference, we could assign to all EPSG:4326. This would make the process more robust. 
 
-            print(open_raster_list)
+            
 
-        #del scene_name_file
-        # Get bounds of processing area
+ 
+        # Get bounds of processing area to identify processing bounds
         processing_bounds = get_processing_bound(path=geom_file)
 
-        # Dict to store extracted bands for further process
-        dict_keys = band_order_for_indices[process_name]
-        extracted_bands = dict.fromkeys(dict_keys)
+      
+        dict_keys = band_order_for_indices[process_name] # Store the band order according to the type of process.
+        extracted_bands = dict.fromkeys(dict_keys)  # Dict to store extracted bands for further process
         
         # Pairing band pairs for each scenes, in the goal of performing further processing on merged scenes band per band.
         for band in range(0, len(open_raster_list[0])):
@@ -303,7 +313,7 @@ def main():
             # bounds is used to limit the merge to the total extent of the provided geometry.
             # This helps improving the rapidity of processing since non-necessary data is not processed.
 
-            if process_name == 'S2_NBR' and dict_keys[band] == 'B12':
+            if process_name == 'S2_NBR' and dict_keys[band] == 'B12': 
 
                 band_merged, out_transform = merge(raster_to_merge, bounds= processing_bounds, res=10, resampling=Resampling.bilinear)
 
@@ -336,6 +346,8 @@ def main():
         # Converting the masked pixels to nodata
         index_NBR_mask = apply_mask(index_NBR, mask, nodata=no_data)
         
+        process_indices_storage[key] = index_NBR_mask
+
         del extracted_bands
 
         # Preparing to export the NBR raster if it is wished to see the results.
@@ -351,12 +363,17 @@ def main():
         
         
         
-        with rasterio.open(os.path.join(repositary, f"{key}_NBR_index.tif"), mode='w', **output_meta,) as dst:
+        with rasterio.open(os.path.join(repositary, f"{key}_{process_name}.tif"), mode='w', **output_meta,) as dst:
 
             dst.write(index_NBR_mask[0], 1)
 
-        del open_raster_list, mask, index_NBR, index_NBR_mask, #scene_name_file
+        del open_raster_list, mask, index_NBR, index_NBR_mask
  
+   
+    dNBR_burnt_area = calculate_S2_dNBR(process_indices_storage['before_fire'], process_indices_storage['end_fire'], no_data)
+
+    dNBR_veg_regrowth = calculate_S2_dNBR(process_indices_storage['end_fire'], process_indices_storage['recent'], no_data)
+
 if __name__ == '__main__':
 
     main()
